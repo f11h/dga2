@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#141b27">
+  <title>Bitte ärgern. Das Brettspiel mit Twist.</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="Bitte ärgern Startseite"><span class="brand-mark">b<span>!</span></span> bitte ärgern<span class="brand-dot">.</span></a>
+    <span class="top-caption">DAS BRETT. DIE WÜRFEL. DAS CHAOS.</span>
+    <button class="button quiet" id="fullscreen-toggle" type="button" aria-pressed="false">Vollbild</button>
+    <button class="button quiet" id="sound-toggle" type="button" aria-pressed="true" aria-label="Soundeffekte ein- oder ausschalten">Ton an</button>
+    <button class="button quiet" id="rules-button"><span aria-hidden="true">?</span> Spielregeln</button>
+  </header>
+  <p id="fullscreen-error" class="fullscreen-error" role="alert" hidden></p>
+
+  <main>
+    <section class="intro">
+      <div><div class="eyebrow"><span class="live-dot"></span> EIN BRETT · VIER SPIELER · KEINE GNADE</div>
+      <h1>Freundschaft auf <span>Probe.</span></h1>
+      <p>Mensch ärgere dich nicht. Oder doch. Ihr entscheidet.</p></div>
+      <button class="button quiet" id="new-game"><span aria-hidden="true">↻</span> Neues Spiel</button>
+    </section>
+
+    <div class="game-layout">
+      <section class="board-panel" aria-label="Spielbrett">
+        <div class="board-toolbar"><span id="mode-badge" class="pill">✦ Ereignismodus</span><span class="round-label" id="round-label">RUNDE 01</span></div>
+        <div class="board-wrap"><canvas id="board" aria-label="3D-Spielbrett. Figuren mit den Figuren-Buttons auswählen."></canvas><p id="webgl-error" role="alert" hidden></p>
+          <button id="camera-reset" class="button quiet camera-control" type="button" aria-pressed="false">⊙ Übersicht</button>
+          <span id="scene-caption" class="scene-caption" role="status">3D · Kamera folgt dem Spiel</span>
+        </div>
+        <div class="board-footer"><span id="event-legend"><i class="legend-dot event"></i> Ereignisfeld</span><span><i class="legend-dot safe"></i> Sichere Zielfigur</span><span id="board-hint">Würfeln. Ziehen. Daumen drücken.</span></div>
+      </section>
+
+      <aside class="sidebar">
+        <section class="turn-panel" aria-labelledby="turn-title">
+          <div class="eyebrow" id="turn-label">AM ZUG</div>
+          <div class="turn-heading"><span class="player-orb" id="current-orb"></span><h2 id="turn-title">Koralle</h2><span id="turn-number">01</span></div>
+          <p id="turn-hint" class="turn-hint" aria-live="polite">Bring deine erste Figur ins Spiel.</p>
+          <div class="dice-stage" id="dice-stage" aria-label="Würfel"></div>
+          <div class="dice-meta"><span id="dice-info">Ein Würfel · 6 Seiten</span><strong id="dice-total">Bereit?</strong></div>
+          <button id="roll-button" class="button primary"><span aria-hidden="true">⚄</span> Würfeln <kbd>Leertaste</kbd></button>
+          <div id="move-options" class="move-options" aria-label="Mögliche Züge"></div>
+          <div id="effect-banner" class="effect-banner" hidden></div>
+        </section>
+
+        <section class="players-panel" aria-labelledby="players-title">
+          <div class="section-heading"><h2 id="players-title">Die Runde</h2><span id="players-summary">4 MENSCHEN · LOKAL</span></div>
+          <div id="players"></div>
+          <p class="counter-note" id="counter-note">32 Augen gesammelt? Zeit für ein Ereignis.</p>
+        </section>
+        <section class="activity-panel" aria-labelledby="activity-title">
+          <div class="section-heading"><h2 id="activity-title">Am Spieltisch</h2><span class="live-dot"></span></div>
+          <ol id="activity" aria-live="polite" aria-relevant="additions"></ol>
+        </section>
+      </aside>
+    </div>
+    <footer class="page-footer"><span>Ein Klassiker. Vierzehn Gründe, sich zu ärgern.</span><span>OHNE DOWNLOAD. OHNE ANMELDUNG. MIT SCHADENFREUDE.</span></footer>
+  </main>
+
+  <dialog id="setup-dialog" aria-labelledby="setup-title">
+    <form id="setup-form">
+      <div class="eyebrow">WILLKOMMEN AM SPIELTISCH</div>
+      <h2 id="setup-title">Wer ärgert wen?</h2>
+      <p>Vier Spielerplätze. Ein Gerät. Wählt für jeden Platz einen Menschen oder eine KI und legt los.</p>
+      <div class="name-fields" id="name-fields"></div>
+      <fieldset class="mode-choices"><legend>Euer Spielmodus</legend>
+        <label><input type="radio" name="mode" value="events" checked><span><strong>✦ Mit Ereignissen</strong><small>12 besondere Felder, Glücksrad &amp; jede Menge Chaos.</small></span></label>
+        <label><input type="radio" name="mode" value="classic"><span><strong>Der Klassiker</strong><small>Nur ihr, die Würfel und das gute alte Rauswerfen.</small></span></label>
+      </fieldset>
+      <div class="dialog-actions"><button type="button" id="setup-cancel" class="button quiet" hidden>Abbrechen</button><button class="button primary" type="submit">Ab an den Spieltisch <span aria-hidden="true">→</span></button></div>
+      <small class="setup-footnote">Sechs zum Ausziehen · Alle Figuren ins Ziel · Fair ärgern</small>
+    </form>
+  </dialog>
+
+  <dialog id="event-dialog" aria-labelledby="event-title">
+    <div class="eyebrow" id="event-source">EREIGNISFELD</div>
+    <div class="event-symbol" id="event-symbol" aria-hidden="true">✦</div>
+    <h2 id="event-title"></h2><p id="event-description"></p>
+    <div id="wheel-container" hidden><div class="wheel-pointer" aria-hidden="true">▼</div><div id="wheel" class="wheel"></div><div id="wheel-labels" class="wheel-labels"></div></div>
+    <p id="event-result" role="status"></p>
+    <button class="button primary" id="event-confirm">Ereignis auslösen <span aria-hidden="true">→</span></button>
+  </dialog>
+
+  <dialog id="rules-dialog" aria-labelledby="rules-title">
+    <div class="eyebrow">KURZ ERKLÄRT</div><h2 id="rules-title">Ärgern mit System.</h2>
+    <div class="rules-content">
+      <h3>Der Klassiker</h3><p>Alle starten mit vier Figuren im Haus. Gewürfelt und gezogen wird reihum im Uhrzeigersinn. Mit einer 6 kommt eine Figur auf das eigene Startfeld. Solange eine Figur im Haus wartet, muss eine mögliche Auszieh-Gelegenheit genutzt und ein besetztes eigenes Startfeld nach Möglichkeit freigemacht werden.</p>
+      <p>Nach jeder gewürfelten 6 darfst du noch einmal würfeln. Sind alle übrigen Figuren im Haus oder sicher im Ziel, hast du bis zu drei Versuche. Landest du auf einer fremden Figur, schickst du sie nach Hause. Eigene Figuren dürfen nicht auf demselben Feld stehen.</p>
+      <h3>Ab ins Ziel</h3><p>Nach einer ganzen Runde geht es in die eigenen Zielfelder. Du musst genau passen; im Zielhaus darf nicht übersprungen werden. Die hinterste Figur ist sicher. Weitere Figuren sind ebenfalls sicher, wenn alle Plätze dahinter belegt sind. Wer zuerst alle eigenen Figuren im Zielhaus hat, gewinnt.</p>
+      <h3>Verstärkung</h3><p>Das neue Ereignis gibt der auslösenden Person eine weitere Figur und einen zusätzlichen Platz im Start- und Zielhaus. Das kann mehrfach passieren. Der neue Zielplatz wird am Eingang eingefügt: Bereits sichere Figuren bleiben sicher. Zum Gewinnen müssen auch die zusätzlichen Figuren ins Ziel.</p>
+      <h3>Achtung, Eisenbahn!</h3><p>Quer über das Brett verläuft ein Gleis. Nach zufällig zwei bis fünf weiteren Tischrunden fährt ein Zug durch – in beiden Spielmodi. Figuren auf den Gleiskreuzungen und ungesicherte Zielfiguren im Fahrweg werden zurück ins Haus geschickt. Sichere Zielfiguren und Hausfiguren sind geschützt. Die Durchfahrt erfolgt vor dem nächsten Wurf und sperrt Eingaben bis zum Ende der Animation.</p>
+      <h3>Zwölf Felder, vierzehn Ereignisse</h3><p>Im Ereignismodus löst jedes Landen auf einem der zwölf Sternfelder das Ereignis-Glücksrad aus. Ausscheiden und „Spitzenreiter, umkehren!“ (eine Figur pro Person zurück ins Haus) haben jeweils genau 1 % Wahrscheinlichkeit; die übrigen zwölf Ereignisse teilen sich die restlichen 98 % gleichmäßig. Die Größen der Radsegmente entsprechen diesen Chancen. Nach dem Auslosen wird das Ereignis bestätigt; bei Raketen folgt ein zweites Rad zur Zielauswahl. Dazu addiert jede Person ihre geworfenen Augen: Bei mindestens 32 gibt es ein Ereignis und der Counter springt auf 0. Ein Counter-Ereignis gilt vor dem Ziehen, ein Feld-Ereignis danach. Ereignisse selbst lösen keine weiteren Feld-Ereignisse aus.</p>
+      <h3>Neue Wege</h3><p>Das Baustellen-Ereignis ersetzt die bisherigen Sonderwege durch eine grüne Abkürzung und eine orange Umleitung. Die Pfeile zeigen die Richtung. Beim Erreichen einer Abzweigung kannst du über die Figuren-Buttons den normalen oder einen neuen Weg wählen. Ein Sonderweg kostet einen Würfelschritt: Die Abkürzung führt vier Felder vorwärts, die Umleitung drei Felder zurück. Jeder Sonderweg ist pro Zug höchstens einmal nutzbar. Die Wege gelten für alle bis zum nächsten Baustellen-Ereignis. Sie überspringen nie den eigenen Zieleingang und führen nicht hinter das eigene Startfeld. Schlagen und Ereignisfelder zählen nur am endgültigen Landefeld; sichere Zielfiguren und Zielgassen bleiben unverändert.</p>
+      <p>Neue Verteilung und Platztausch betreffen nur die Umlaufbahn. Rückschicken und Raketen können auch ungesicherte Zielfiguren treffen. Sichere Figuren bleiben immer stehen. Der Raketenschlag ist nicht endgültig: Die Figur kann wieder ausziehen.</p>
+      <h3>Zwei Würfel &amp; andere Seiten</h3><p>Ein zweiter Würfel gilt für die nächsten ein oder zwei eigenen Züge, einschließlich aller Zusatzwürfe innerhalb dieser Züge. Beide Zahlen werden addiert, um eine Figur zu bewegen. Zum Ausziehen brauchst du einen Sechserpasch; zum erneuten Würfeln genügt mindestens eine 6.</p>
+      <p>Vier- oder zehnseitige Würfel gelten sofort und für zwei weitere vollständige Züge jeder noch aktiven Person. Die aktuelle angebrochene Runde zählt nicht. Ein neues Seiten-Ereignis ersetzt das alte. Mit vier Seiten kann niemand ausziehen. Die 3D-Würfel zeigen Zahlen; „D4“ und „D10“ bezeichnen ihren aktuellen Wertebereich.</p>
+      <h3>Die Ereignisse</h3><div id="event-rules"></div>
+      <h3>Menschen &amp; KI</h3><p>Beim Start könnt ihr jeden der vier Spielerplätze mit einem Menschen oder einer KI besetzen. So könnt ihr auch allein gegen drei KIs spielen oder einer reinen KI-Partie zuschauen. Die KI würfelt und zieht selbstständig nach denselben Regeln. Sie bevorzugt Zielfelder und das Schlagen von Gegnern und berücksichtigt die Gefahr, selbst geschlagen zu werden. Auch ihre Ereignisse und das Glücksrad laufen automatisch.</p>
+      <h3>Bedienung</h3><p>Würfle mit dem Button oder der Leertaste. Wähle danach eine leuchtende Figur auf dem 3D-Brett oder einen Figuren-Button. Tab und Enter funktionieren bei den Figuren-Buttons ebenfalls. Beim Warten und bei der Zugauswahl zeigt die Kamera das gesamte Brett mit seiner Landschaft. Nur während Zügen und Ereignissen folgt sie der Aktion. „Übersicht“ deaktiviert diese Verfolgung, „Kamera folgen“ aktiviert sie wieder. „Ton an/aus“ steuert alle Spiel- und Umgebungseffekte; Audio beginnt nach der ersten Interaktion. Während Animationen und KI-Zügen sind Spieleingaben gesperrt. Die Dialoge „Spielregeln“ und „Neues Spiel“ pausieren die KI; nach dem Schließen spielt sie weiter. Ein neues Spiel ersetzt die laufende Partie erst nach dem Start im Dialog. Die Systemeinstellung „Bewegung reduzieren“ verkürzt Animationen und deaktiviert Kameraschwenks und Landschaftsbewegungen.</p>
+    </div>
+    <button id="rules-close" class="button primary">Alles klar</button>
+  </dialog>
+
+  <dialog id="winner-dialog" aria-labelledby="winner-title">
+    <div class="eyebrow">DAS WAR EINE RUNDE!</div><div class="event-symbol" aria-hidden="true">⚑</div>
+    <h2 id="winner-title"></h2><p id="winner-description"></p>
+    <button id="play-again" class="button primary">Revanche? <span aria-hidden="true">↻</span></button>
+  </dialog>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

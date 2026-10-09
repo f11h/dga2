@@ -1,0 +1,13 @@
+# Project exclude paths
+/node_modules/
+/node_modules/three/build/three.cjs
+/node_modules/three/examples/fonts/
+/node_modules/three/examples/jsm/libs/ammo.wasm.wasm
+/node_modules/three/examples/jsm/libs/basis/
+/node_modules/three/examples/jsm/libs/draco/draco_decoder.wasm
+/node_modules/three/examples/jsm/libs/draco/gltf/draco_decoder.wasm
+/node_modules/three/examples/jsm/libs/draco/README.md
+/node_modules/three/examples/jsm/libs/rhino3dm/rhino3dm.wasm
+/node_modules/three/LICENSE
+/node_modules/three/README.md
+/node_modules/three/src/nodes/materialx/DISCLAIMER.md
