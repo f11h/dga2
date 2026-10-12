@@ -1,0 +1,12 @@
+{
+  "name": "Bitte ärgern · Mein Spiel",
+  "short_name": "Bitte ärgern",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#111722",
+  "theme_color": "#111722",
+  "lang": "de",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

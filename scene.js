@@ -130,6 +130,30 @@ export class BoardScene {
     sprite.scale.set(width, width / 4, 1);
     return sprite;
   }
+  moveNumber(number, color) {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#111722';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 8;
+    ctx.beginPath(); ctx.arc(64, 64, 58, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+    ctx.font = `bold ${Math.min(76, 180 / String(number).length)}px system-ui`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(String(number), 64, 66);
+    const texture = this.keep(new THREE.CanvasTexture(canvas));
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const badge = new THREE.Sprite(this.keep(new THREE.SpriteMaterial({
+      map: texture, depthTest: false, depthWrite: false, sizeAttenuation: false
+    })));
+    badge.center.set(.5, 0);
+    badge.renderOrder = 100;
+    badge.visible = false;
+    this.scene.add(badge);
+    return badge;
+  }
   build() {
     this.slabMaterial = this.material('#24344b');
     const slab = this.mesh(new THREE.BoxGeometry(12, .45, 12), this.slabMaterial);
@@ -262,6 +286,8 @@ export class BoardScene {
     head.position.y = .68;
     const label = this.label(String(piece + 1), '#ffffff', .55);
     label.position.set(0, 1.02, 0); pawn.add(label);
+    pawn.userData.label = label;
+    pawn.userData.moveNumber = this.moveNumber(piece + 1, COLORS[player]);
     const safe = this.label('✓', '#ffffff', .55);
     safe.position.set(.28, 1.17, 0); safe.visible = false;
     pawn.add(safe); pawn.userData.safe = safe;
@@ -349,7 +375,7 @@ export class BoardScene {
     }
     this.pathResources = [...this.resources].filter(resource => !existing.has(resource));
   }
-  sync(state, moves = []) {
+  sync(state, moves = [], { numberedMoves = false, interactive = true } = {}) {
     if (this.disposed) return;
     this.ensure(state);
     this.syncPaths(state.paths);
@@ -370,10 +396,15 @@ export class BoardScene {
       }
       this.placeHome(player.id, count);
       this.placeGoals(player.id, count);
-      home.label.visible = !player.eliminated;
+      home.plate.visible = !player.absent;
+      this.sockets[player.id].forEach(socket => { if (player.absent) socket.visible = false; });
+      this.goalExtras[player.id].forEach(group => { if (player.absent) group.visible = false; });
+      home.label.visible = !player.absent && !player.eliminated;
       const goalEnd = 39 + count;
       this.pawns[player.id].forEach((pawn, piece) => {
         pawn.rotation.set(0, 0, 0);
+        pawn.userData.moveNumber.visible = false;
+        pawn.userData.label.visible = true;
         if (piece >= count) {
           pawn.visible = false;
           pawn.userData.ring.visible = pawn.userData.safe.visible = false;
@@ -381,13 +412,15 @@ export class BoardScene {
         }
         const progress = player.pieces[piece];
         pawn.position.copy(vec(location(player.id, piece, progress, count)));
-        pawn.visible = !player.eliminated;
+        pawn.visible = !player.absent && !player.eliminated;
         pawn.scale.setScalar(pawnScale(player.id, progress, count));
-        const available = player.id === state.current && moves.includes(piece);
+        const available = pawn.visible && player.id === state.current && moves.includes(piece);
         pawn.userData.ring.visible = available;
+        pawn.userData.moveNumber.visible = available && numberedMoves;
+        pawn.userData.label.visible = !pawn.userData.moveNumber.visible;
         pawn.userData.safe.visible = progress >= 40 &&
           Array.from({ length: goalEnd - progress }, (_, i) => progress + i + 1).every(value => player.pieces.includes(value));
-        if (available) this.available.push(pawn);
+        if (available && interactive) this.available.push(pawn);
       });
     });
     this.canvas.style.cursor = this.available.length ? 'pointer' : 'default';
@@ -426,11 +459,26 @@ export class BoardScene {
         pawn.rotation.set(0, 0, 0);
         pawn.scale.setScalar(1);
         pawn.userData.ring.visible = pawn.userData.safe.visible = false;
+        pawn.userData.moveNumber.visible = false;
+        pawn.userData.label.visible = true;
         pawn.visible = piece < 4;
         if (piece < 4) pawn.position.copy(vec(location(player, piece, -1, 4)));
       });
     }
     this.idle();
+  }
+  updateMoveNumbers() {
+    const height = this.canvas.clientHeight;
+    if (!height) return;
+    const pixels = clamp(Math.min(this.canvas.clientWidth, height) * .065, 32, 48);
+    const size = 2 * pixels / (height * this.camera.projectionMatrix.elements[5]);
+    this.pawns.flat().forEach(pawn => {
+      const badge = pawn.userData.moveNumber;
+      if (!badge.visible) return;
+      badge.position.set(0, 1.05, 0);
+      pawn.localToWorld(badge.position);
+      badge.scale.set(size, size, 1);
+    });
   }
   frame(time) {
     if (this.disposed) return;
@@ -457,6 +505,7 @@ export class BoardScene {
     this.camera.position.lerp(this.cameraGoal, motion.matches ? 1 : 1 - Math.exp(-dt * 5));
     this.look.lerp(this.focus, motion.matches ? 1 : 1 - Math.exp(-dt * 6));
     this.camera.lookAt(this.look);
+    this.updateMoveNumbers();
     if (!document.hidden) this.renderer.render(this.scene, this.camera);
     this.raf = requestAnimationFrame(this.frame);
   }

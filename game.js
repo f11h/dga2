@@ -50,13 +50,17 @@ export class Game {
     this.players = COLORS.map((color, id) => ({
       id, color, name: names[id]?.trim() || COLOR_NAMES[id],
       controller: controllers[id] ?? 'human',
+      absent: controllers[id] === 'empty',
       pieces: [-1, -1, -1, -1], score: 0, eliminated: false,
       doubleTurns: 0, pendingDouble: 0
     }));
-    if (this.players.some(player => !['human', 'computer'].includes(player.controller))) {
+    if (this.players.some(player => !['human', 'computer', 'empty'].includes(player.controller))) {
       throw new Error('Unbekannte Spielersteuerung.');
     }
-    this.current = 0;
+    if (this.participants().length < 2) {
+      throw new Error('Mindestens zwei besetzte Spielerplätze werden benötigt.');
+    }
+    this.current = this.participants()[0].id;
     this.phase = 'roll';
     this.attempts = 0;
     this.round = 1;
@@ -69,7 +73,11 @@ export class Game {
     // Schedule lazily so creating a game does not consume dice randomness.
     this.nextTrainRound = null;
     this.pendingTrain = false;
-    this.log = ['Das Spiel beginnt. ' + this.players[0].name + ' ist dran.'];
+    this.log = ['Das Spiel beginnt. ' + this.players[this.current].name + ' ist dran.'];
+  }
+
+  participants() {
+    return this.players.filter(player => !player.absent);
   }
 
   say(text) {
@@ -107,7 +115,7 @@ export class Game {
   }
 
   boardPieces({ trackOnly = false } = {}) {
-    return this.players.flatMap(player => player.eliminated ? [] : player.pieces.flatMap((progress, piece) =>
+    return this.players.flatMap(player => player.absent || player.eliminated ? [] : player.pieces.flatMap((progress, piece) =>
       progress >= 0 && (trackOnly ? progress < 40 : !this.secured(player.id, piece))
         ? [{ player: player.id, piece, progress, position: this.position(player.id, progress) }]
         : []
@@ -151,7 +159,7 @@ export class Game {
   legalMoves() {
     if (this.phase !== 'move' || !this.rollData || this.pendingTrain) return [];
     const player = this.players[this.current];
-    if (player.eliminated) return [];
+    if (player.absent || player.eliminated) return [];
     const { total, canEnter } = this.rollData;
     let moves = player.pieces.flatMap((progress, piece) => {
       if (this.secured(player.id, piece)) return [];
@@ -220,7 +228,8 @@ export class Game {
     const sides = this.sides();
     const values = Array.from({ length: count }, () => 1 + Math.floor(this.random() * sides));
     const total = values.reduce((sum, value) => sum + value, 0);
-    this.rollData = { values, total, sides, canEnter: values.every(value => value === 6), again: values.includes(6) };
+    const result = { values, total, sides, canEnter: values.every(value => value === 6), again: values.includes(6) };
+    this.rollData = result;
     this.attempts++;
     this.say(`${player.name} würfelt ${values.join(' + ')}${count === 2 ? ' = ' + total : ''}.`);
     if (this.mode === 'events') {
@@ -233,7 +242,7 @@ export class Game {
     this.phase = 'move';
     this.pauseForEvents();
     this.settle();
-    return this.rollData;
+    return result;
   }
 
   move(pieceId, path = null) {
@@ -246,7 +255,7 @@ export class Game {
     const position = this.position(player.id, move.destination);
     if (position !== null) {
       for (const opponent of this.players) {
-        if (opponent.id === player.id || opponent.eliminated) continue;
+        if (opponent.id === player.id || opponent.absent || opponent.eliminated) continue;
         opponent.pieces.forEach((progress, index) => {
           if (this.position(opponent.id, progress) === position) {
             opponent.pieces[index] = -1;
@@ -366,7 +375,7 @@ export class Game {
         // Snapshot the participants: everybody receives two full subsequent turns.
         this.diceEffect = {
           sides: event.id === 'ten' ? 10 : 4,
-          remaining: this.players.map(player => player.eliminated ? 0 : 2),
+          remaining: this.players.map(player => player.absent || player.eliminated ? 0 : 2),
           skipCurrent: true
         };
         detail = `Ab jetzt würfeln alle mit ${this.diceEffect.sides} Seiten.`;
@@ -385,7 +394,7 @@ export class Game {
   }
 
   checkWinner() {
-    const active = this.players.filter(player => !player.eliminated);
+    const active = this.participants().filter(player => !player.eliminated);
     const winner = active.find(player => player.pieces.every(progress => progress >= 40))
       || (active.length === 1 ? active[0] : null);
     if (winner) {
@@ -399,7 +408,7 @@ export class Game {
   settle() {
     if (this.phase === 'over' || this.phase === 'events') return;
     const player = this.players[this.current];
-    if (player.eliminated) {
+    if (player.absent || player.eliminated) {
       this.endTurn();
       return;
     }
@@ -433,7 +442,7 @@ export class Game {
       }
       this.diceEffect.skipCurrent = false;
       this.players.forEach(other => {
-        if (other.eliminated) this.diceEffect.remaining[other.id] = 0;
+        if (other.absent || other.eliminated) this.diceEffect.remaining[other.id] = 0;
       });
       if (this.diceEffect.remaining.every(turns => turns === 0)) this.diceEffect = null;
     }
@@ -441,7 +450,7 @@ export class Game {
     do {
       next = (next + 1) % 4;
       if (next === 0) this.round++;
-    } while (this.players[next].eliminated);
+    } while (this.players[next].absent || this.players[next].eliminated);
     this.current = next;
     this.phase = 'roll';
     this.attempts = 0;

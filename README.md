@@ -1,10 +1,12 @@
 # Bitte aergern.
 
 Ein schlankes Mensch-aergere-dich-nicht-Browsergame mit vier Spielerplaetzen
-an einem Geraet. Jeder Platz kann von einem Menschen oder der KI gespielt
-werden. HTML, CSS und JavaScript mit einer echten WebGL-3D-Spielansicht
+an einem Geraet oder mit Handys als Internet-Controller. Jeder Platz kann von
+einem Menschen oder der KI gespielt werden oder unbenutzt bleiben (mindestens
+zwei aktive Farben). HTML, CSS und JavaScript mit einer echten WebGL-3D-Spielansicht
 auf Basis von lokal installiertem Three.js. Keine CDNs oder externen Assets;
 nach der einmaligen Installation ist keine Internetverbindung erforderlich.
+Dies gilt fuer den lokalen Modus; Internetpartien benoetigen den Spring-Server.
 
 ## Starten
 
@@ -15,10 +17,72 @@ npm install
 npm start
 ```
 
-Im Browser `http://localhost:8080` oeffnen. Alternativ die Dateien mit
+Im Browser `http://localhost:8080` oeffnen und **Lokal an diesem Geraet** waehlen.
+Alternativ die Dateien mit
 einem beliebigen statischen Webserver bereitstellen. `index.html` nicht
 direkt per `file://` oeffnen: JavaScript-Module benoetigen einen Webserver.
 Ein anderer Port kann ueber die Umgebungsvariable `PORT` gesetzt werden.
+
+## Internet-Multiplayer: Brett + Handys
+
+Der Hauptbrowser ist der Spieltisch und benoetigt WebGL. **Internet-Lobby
+erstellen** erzeugt einen Raum. Der lokale Modus bleibt mit **Lokal an diesem
+Geraet** separat verfuegbar. Handys scannen den lokal erzeugten QR-Code oder
+oeffnen den angezeigten Link `https://<host>/controller/?room=CODE`; alternativ
+Raumcode und Name auf `/controller/` eingeben. Der QR-Code enthaelt nur den
+Raumcode, niemals das geheime Sitzungstoken.
+
+Das erste beigetretene Handy verwaltet den Spielmodus und die freien Farben:
+**KI** oder **Unbenutzt**. Nach **Einstellungen speichern** kann es die Partie
+starten, sobald mindestens zwei Farben besetzt und Spieltisch sowie alle Handys
+verbunden sind. Zwei oder drei aktive Farben verwenden weiterhin das feste
+Vierfarbenbrett. Ab Spielstart zeigt der Spieltisch nur Brett, Ereignisrad und
+Anzeigeoptionen (Ton, Vollbild, Kamera). Wuerfeln, Figur und alternativen Weg
+auswaehlen sowie jeden Ereignisschritt bestaetigen erfolgt ausschliesslich
+auf dem jeweiligen Handy. Die KI und Zugdurchfahrten laufen am Spieltisch.
+In der Lobby kann die Verwaltung einen getrennten Handy-Platz reserviert
+lassen oder ausdruecklich auf KI/unbenutzt umstellen und speichern. Dann ist
+dessen alter Sitzungsschluessel nicht mehr gueltig. Verbundene Menschen
+koennen nicht ersetzt werden. Waehrend einer laufenden Partie bleiben auch
+getrennte menschliche Plaetze erhalten; die Partie pausiert zur Wiederaufnahme.
+
+Das persoenliche Handy-Dashboard zeigt Figuren im Haus/Ziel, den Ereigniscounter,
+echte geworfene Augensummen, Wuerfe, Zuege, geschlagene Figuren und Heimkehr.
+Optionales Schuetteln aktiviert man per Schalter: Sensorfreigabe (insbesondere
+iOS) und HTTPS sind erforderlich. Der normale Wuerfelbutton bleibt verfuegbar.
+Die Controller-Seite kann ueber das Browsermenue bzw. Safari **Teilen > Zum
+Home-Bildschirm** als eigenstaendige PWA installiert werden. Der Service Worker
+speichert nur die statische Controller-Oberflaeche, keine Raum-/Spielstaende;
+offline sind Spieleingaben gesperrt.
+
+Bei Verbindungsausfall pausieren Handyeingaben und KI. Die Clients verbinden
+mit begrenzten Wiederholungsabstaenden erneut und nehmen ihre rollengetrennt
+lokal gespeicherten Sitzungen wieder auf. Aktionen werden nie automatisch
+wiederholt. Auch Neuladen des Spieltischs rekonstruiert den zuletzt publizierten
+Regelzustand und Ereignisschritt; eine bereits angewandte Ereigniswirkung wird
+nicht doppelt ausgefuehrt. Laufende optische Animationen werden dabei nicht
+wiederhergestellt. **Andere Lobby / neu beitreten** am Handy loescht seine alte
+Sitzung. Raumdaten leben im Arbeitsspeicher des Servers; ein Serverneustart
+oder Ablauf des Raums beendet die Wiederaufnahme.
+Wird dieselbe Sitzung in einem zweiten Tab fortgesetzt, bleibt der ersetzte
+Tab dauerhaft getrennt und zeigt einen Hinweis statt sich gegenseitig endlos
+neu zu verbinden. Gespeicherte gemeinsame Zugangsdaten werden dabei nicht
+geloescht. Lobby-Einstellungen und Spielstart sind bis zur Serverbestaetigung
+gesperrt; bei Verbindungsverlust werden sie nicht automatisch erneut gesendet.
+Abgelaufene oder nicht mehr vorhandene Raeume beenden die Wiederverbindung
+mit einem sichtbaren Hinweis; am Spieltisch kann eine neue Lobby erstellt werden.
+
+### Bereitstellung
+
+`npm start` ist weiterhin ein ausschliesslich lokaler statischer Entwicklungsserver
+auf `127.0.0.1` und **kein Multiplayer-Server**. Fuer Internetpartien muss der
+Spring-WebSocket-Server dieselbe Origin fuer Browserdateien und `/ws` bereitstellen.
+Docker-/Serverstart, Konfiguration und Grenzen sind in
+[`backend/README.md`](backend/README.md) beschrieben. Fuer echte Internetnutzung
+sind ein erreichbarer Host, DNS, HTTPS/WSS und ein WebSocket-faehiger Reverse
+Proxy noetig; ein vorhandenes Container-Image allein ist noch keine
+Internetbereitstellung. Sitzungstokens sind Bearer-Geheimnisse: nicht teilen.
+Der Hauptbrowser bleibt Regelautoritaet und muss waehrend der Partie aktiv sein.
 
 ## GitHub Pages
 
@@ -40,6 +104,10 @@ beibehaltenen relativen Modulpfade erlauben auch den Betrieb unter
 GitHub Pages nicht erforderlich. Die veroeffentlichte URL erscheint
 im Deployment unter **Actions** und **Settings > Pages**.
 
+GitHub Pages bietet ausschliesslich den lokalen Spielmodus, keinen `/ws`-Broker.
+Internet-Multiplayer ist dort ohne gleich-originige Serverbereitstellung nicht
+verfuegbar.
+
 ## Spiel
 
 - Vier Namen eingeben, pro Spielerplatz **Mensch** oder **KI** auswaehlen
@@ -49,7 +117,11 @@ im Deployment unter **Actions** und **Settings > Pages**.
 - Wuerfeln per Button oder Leertaste; leuchtende Figur oder Figuren-Button
   auswaehlen. Tastaturbedienung mit Tab und Enter wird unterstuetzt.
 - **Vollbild** in der Kopfzeile zeigt das Spiel ohne Browserrahmen mit
-  kompakter Spielansicht. Wuerfelsteuerung und Dialoge bleiben verfuegbar.
+  einer bildschirmfuellenden 3D-Spielflaeche ohne Seitenleisten oder Seitenraender.
+  Im lokalen Modus liegen die Zugsteuerungen als kompaktes Overlay ueber dem
+  Brett; im Multiplayer erfolgen die Eingaben weiterhin nur auf den Handys.
+  Bei der Multiplayer-Figurenauswahl zeigen grosse, kontrastreiche Nummern
+  ueber den ziehbaren Figuren dieselben Figurennummern wie auf dem Handy.
   **Vollbild verlassen** oder Esc beendet den Modus. In Browsern ohne
   Fullscreen-Unterstuetzung ist der Button deaktiviert.
 - Das gesamte Brett mit Figuren, Feldern, Haeusern, Licht und Schatten ist
@@ -61,7 +133,8 @@ im Deployment unter **Actions** und **Settings > Pages**.
   zeigt das ganze Brett und deaktiviert die Verfolgung; **Kamera folgen**
   aktiviert sie wieder. Figuren-Buttons bleiben als Tastaturalternative
   zu den anklickbaren 3D-Figuren verfuegbar.
-- Das Brett steht in einer belebten Landschaft mit umherlaufenden Tieren,
+- Das Brett steht in einer belebten Landschaft mit umherlaufenden Schafen,
+  Hasen, einer Ente sowie Katzen, Giraffen und Kuehen,
   Baeumen im Wind, Wolken, wechselndem Wetter und zufaelligen lustigen
   Hintergrundaktionen. **Ton an/aus** schaltet die lokal erzeugten
   Spiel- und Umgebungssounds. Audio startet nach der ersten Interaktion;
@@ -176,8 +249,9 @@ nicht geometrische Vier- oder Zehnflaechner.
 
 Die detaillierten Regeln und Ereignisbeschreibungen sind im Spiel
 ueber **Spielregeln** erreichbar. Neue Partien beginnen erst mit dem
-Startbutton im Einrichtungsdialog. Der Spielstand lebt im aktuellen Tab;
-Neuladen setzt ihn zurueck.
+Startbutton im Einrichtungsdialog. Lokale Spielstaende leben im aktuellen Tab;
+Neuladen setzt lokale Partien zurueck. Internetpartien verwenden den publizierten
+Server-Snapshot fuer die Wiederaufnahme.
 
 ## Entwicklung
 
@@ -195,5 +269,15 @@ Die Regellogik wird nicht durch die Animation veraendert.
 `sound.js` erzeugt die Soundeffekte per Web Audio und bietet eine
 gemeinsame Stummschaltung.
 `server.js` erlaubt nur die Browserdateien und die zwei benoetigten
-Three.js-Buildmodule; andere Dateien aus `node_modules` sind nicht
+Three.js-Buildmodule sowie das lokale QR-Modul; andere Dateien aus `node_modules` sind nicht
 oeffentlich. Er lauscht ausschliesslich auf `127.0.0.1`.
+
+## Drittanbieter-Lizenzen
+
+Three.js und `qrcode-generator` werden lokal installiert, ohne CDN. Bei der
+Bereitstellung ihrer ausgewaehlten Browsermodule muessen die MIT-Lizenz und
+Copyright-Hinweise mitgeliefert werden. Pages kopiert `node_modules/three/LICENSE`
+und `backend/THIRD_PARTY_NOTICES.txt` ins statische Artefakt; der Docker-Build
+liefert diese Hinweise ebenfalls mit. Der kombinierte Hinweis enthaelt beide
+Copyright-Vermerke und den vollstaendigen MIT-Lizenztext und ist unter
+`/THIRD_PARTY_NOTICES.txt` erreichbar (auf Pages relativ zur Projekt-URL).

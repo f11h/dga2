@@ -18,6 +18,23 @@
   <p id="fullscreen-error" class="fullscreen-error" role="alert" hidden></p>
 
   <main>
+    <section id="online-panel" class="online-panel" aria-labelledby="online-title">
+      <div><div class="eyebrow">GEMEINSAM AM TISCH · AUCH ÜBERS INTERNET</div><h2 id="online-title">Handys spielen. Das Brett bleibt groß.</h2>
+      <p>Erstelle eine Lobby, scannt den QR-Code und steuert die Partie auf euren Handys.</p></div>
+      <div class="online-actions"><button class="button primary" id="create-room">Internet-Lobby erstellen</button>
+      <button class="button quiet" id="local-mode">Lokal an diesem Gerät</button><a class="button quiet" href="controller/">Mit Handy beitreten</a></div>
+      <p id="network-status" role="status" aria-live="polite" hidden></p>
+      <div id="room-lobby" hidden>
+        <div id="room-qr" aria-label="QR-Code zum Beitreten"></div>
+        <div><h3>Raum <strong id="room-code"></strong></h3><a id="room-link"></a>
+        <button class="button quiet" id="copy-room">Einladungslink kopieren</button>
+        <p>Das erste Handy verwaltet Modus, freie Plätze und Spielstart. Freie Plätze können KI oder unbenutzt sein.</p>
+        <p id="room-origin-warning" role="status" hidden></p>
+        <ul id="room-seats"></ul></div>
+      </div>
+    </section>
+    <p id="network-error" role="alert" hidden></p>
+    <p id="connection-banner" class="connection-banner" role="alert" hidden></p>
     <section class="intro">
       <div><div class="eyebrow"><span class="live-dot"></span> EIN BRETT · VIER SPIELER · KEINE GNADE</div>
       <h1>Freundschaft auf <span>Probe.</span></h1>
@@ -29,6 +46,9 @@
       <section class="board-panel" aria-label="Spielbrett">
         <div class="board-toolbar"><span id="mode-badge" class="pill">✦ Ereignismodus</span><span class="round-label" id="round-label">RUNDE 01</span></div>
         <div class="board-wrap"><canvas id="board" aria-label="3D-Spielbrett. Figuren mit den Figuren-Buttons auswählen."></canvas><p id="webgl-error" role="alert" hidden></p>
+          <div id="tv-display" class="tv-display" aria-label="Würfelanzeige des Spieltischs" hidden>
+            <strong id="tv-turn"></strong><div id="tv-dice-slot"></div><p id="tv-roll"></p><small id="tv-status" aria-live="polite"></small>
+          </div>
           <button id="camera-reset" class="button quiet camera-control" type="button" aria-pressed="false">⊙ Übersicht</button>
           <span id="scene-caption" class="scene-caption" role="status">3D · Kamera folgt dem Spiel</span>
         </div>
@@ -65,7 +85,7 @@
     <form id="setup-form">
       <div class="eyebrow">WILLKOMMEN AM SPIELTISCH</div>
       <h2 id="setup-title">Wer ärgert wen?</h2>
-      <p>Vier Spielerplätze. Ein Gerät. Wählt für jeden Platz einen Menschen oder eine KI und legt los.</p>
+      <p>Vier feste Farben. Wählt Menschen, KI oder unbenutzte Plätze (mindestens zwei aktive Farben).</p>
       <div class="name-fields" id="name-fields"></div>
       <fieldset class="mode-choices"><legend>Euer Spielmodus</legend>
         <label><input type="radio" name="mode" value="events" checked><span><strong>✦ Mit Ereignissen</strong><small>12 besondere Felder, Glücksrad &amp; jede Menge Chaos.</small></span></label>

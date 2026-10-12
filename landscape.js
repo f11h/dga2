@@ -39,7 +39,7 @@ export class Landscape {
       white: '#fff5dd', wool: '#e8e4d6', dark: '#343841',
       pink: '#e5a5a5', rabbit: '#c6a78d', orange: '#f29c3f',
       yellow: '#ffd873', purple: '#b890cf', cloud: '#f5f4ef',
-      hat: '#77537e', ribbon: '#efb963'
+      hat: '#77537e', ribbon: '#efb963', giraffe: '#e6bb64'
     };
     this.materials = {};
     for (const [name, color] of Object.entries(colors)) {
@@ -180,9 +180,9 @@ export class Landscape {
     animal.legs.push(pivot);
   }
 
-  caption(animal, text) {
+  caption(animal, text, height = 2.5) {
     const label = this.board.label(text, '#fffce7', 3);
-    label.position.set(0, 2.5, 0);
+    label.position.set(0, height, 0);
     label.visible = false;
     animal.group.add(label);
     animal.caption = label;
@@ -265,6 +265,124 @@ export class Landscape {
     hat.visible = false;
     duck.accessory = hat;
     this.caption(duck, 'Hut ab!');
+    this.buildCats();
+    this.buildGiraffes();
+    this.buildCows();
+  }
+
+  buildCats() {
+    for (let i = 0; i < 2; i++) {
+      const cat = this.animal('cat', .9 + i * Math.PI, .055 + i * .007, 10.6);
+      const fur = i ? 'dark' : 'orange';
+      for (const x of [-.17, .17]) for (const z of [-.25, .25]) {
+        this.leg(cat, fur, x, z, .26, .06);
+        this.part('ball', 'white', cat.legs[cat.legs.length - 1],
+          0, -.23, .035, .075, .045, .1);
+      }
+      this.part('soft', fur, cat.body, 0, .47, -.04, .3, .27, .45, true);
+      this.part('ball', 'white', cat.body, 0, .48, .32, .16, .18, .06);
+      const head = this.group(cat.body, 0, .7, .34);
+      this.part('soft', fur, head, 0, 0, 0, .25, .24, .25, true);
+      this.face(head, .23, .04, .12, 'white');
+      for (const side of [-1, 1]) {
+        const ear = this.group(head, side * .17, .2, -.035);
+        this.part('cone', fur, ear, 0, .06, 0, .105, .24, .095);
+        this.part('cone', 'pink', ear, 0, .065, .06, .055, .13, .025);
+        ear.rotation.z = side * -.15;
+        cat.ears.push(ear);
+        this.part('ball', 'white', head, side * .065, -.075, .23, .08, .06, .05);
+        for (const height of [-.04, -.09]) {
+          const whisker = this.part('box', 'white', head, side * .2, height, .265,
+            .19, .014, .014);
+          whisker.rotation.z = side * (height === -.04 ? .15 : -.15);
+        }
+      }
+      this.part('ball', 'pink', head, 0, -.035, .29, .045, .035, .035);
+      const tail = this.group(cat.body, 0, .54, -.43);
+      tail.rotation.x = -.35;
+      this.part('trunk', fur, tail, 0, .18, 0, .045, .36, .045);
+      const tip = this.part('trunk', fur, tail, 0, .4, .035, .04, .18, .04);
+      tip.rotation.x = .4;
+      this.caption(cat, 'Miau!');
+    }
+  }
+
+  buildGiraffes() {
+    for (let i = 0; i < 2; i++) {
+      const giraffe = this.animal('giraffe', 2.5 + i * Math.PI, -.027 - i * .004, 12.2);
+      for (const x of [-.25, .25]) for (const z of [-.42, .42]) {
+        this.leg(giraffe, 'giraffe', x, z, .85, .065);
+        this.part('box', 'wood', giraffe.legs[giraffe.legs.length - 1],
+          0, -.82, .015, .1, .08, .13);
+      }
+      this.part('soft', 'giraffe', giraffe.body, 0, 1.2, -.05, .39, .45, .7, true);
+      for (const side of [-1, 1]) for (let spot = 0; spot < 4; spot++) {
+        this.part('ball', 'wood', giraffe.body, side * .34,
+          1.18 + spot % 2 * .12, -.36 + spot * .2, .035, .11, .12);
+      }
+      const neck = this.group(giraffe.body, 0, 2.05, .43);
+      neck.rotation.x = .13;
+      this.part('trunk', 'giraffe', neck, 0, 0, 0, .17, 1.55, .17, true);
+      for (const side of [-1, 1]) for (const height of [-.45, 0, .45]) {
+        this.part('ball', 'wood', neck, side * (.145 - height * .033),
+          height, 0, .025, .13, .1);
+      }
+      const head = this.group(giraffe.body, 0, 2.9, .62);
+      this.part('soft', 'giraffe', head, 0, 0, 0, .23, .24, .35, true);
+      this.part('soft', 'rabbit', head, 0, -.08, .28, .21, .13, .18);
+      this.face(head, .3, .07, .12);
+      for (const side of [-1, 1]) {
+        const ear = this.group(head, side * .27, .12, -.09);
+        this.part('ball', 'giraffe', ear, 0, 0, 0, .15, .06, .09);
+        ear.rotation.z = side * .3;
+        giraffe.ears.push(ear);
+        this.part('trunk', 'wood', head, side * .1, .3, -.08, .035, .22, .035);
+        this.part('ball', 'wood', head, side * .1, .42, -.08, .055, .055, .055);
+        this.part('ball', 'dark', head, side * .08, -.08, .43, .025, .02, .02);
+      }
+      const tail = this.part('trunk', 'giraffe', giraffe.body,
+        0, 1.01, -.82, .035, .48, .035);
+      tail.rotation.x = -.25;
+      this.part('ball', 'wood', giraffe.body, 0, .75, -.88, .07, .11, .07);
+      this.caption(giraffe, 'Hoch hinaus!', 3.7);
+    }
+  }
+
+  buildCows() {
+    for (let i = 0; i < 2; i++) {
+      const cow = this.animal('cow', -.8 + i * Math.PI, .032 + i * .005, 11.8);
+      for (const x of [-.38, .38]) for (const z of [-.5, .5]) {
+        this.leg(cow, 'white', x, z, .55, .095);
+        this.part('box', 'dark', cow.legs[cow.legs.length - 1],
+          0, -.51, .015, .14, .1, .17);
+      }
+      this.part('soft', 'white', cow.body, 0, .95, -.05, .63, .52, .88, true);
+      for (const side of [-1, 1]) for (let spot = 0; spot < 3; spot++) {
+        this.part('soft', 'dark', cow.body, side * .55,
+          .9 + spot % 2 * .17, -.45 + spot * .35, .055, .19, .23);
+      }
+      this.part('ball', 'pink', cow.body, 0, .46, -.3, .19, .11, .21);
+      const head = this.group(cow.body, 0, 1.15, .78);
+      this.part('soft', 'white', head, 0, 0, 0, .36, .38, .33, true);
+      this.part('soft', 'dark', head, .18, .07, .24, .16, .2, .1);
+      this.part('soft', 'pink', head, 0, -.1, .34, .32, .16, .22);
+      this.face(head, .31, .09, .18, 'white');
+      for (const side of [-1, 1]) {
+        this.part('ball', 'dark', head, side * .13, -.08, .53, .045, .03, .025);
+        const ear = this.group(head, side * .4, .1, -.02);
+        this.part('soft', 'dark', ear, 0, 0, 0, .2, .085, .12);
+        this.part('ball', 'pink', ear, 0, .015, .08, .12, .045, .035);
+        cow.ears.push(ear);
+        const horn = this.part('cone', 'wool', head, side * .2, .35, -.08,
+          .06, .27, .06);
+        horn.rotation.z = side * -.35;
+      }
+      const tail = this.group(cow.body, 0, .93, -.96);
+      tail.rotation.x = -.2;
+      this.part('trunk', 'white', tail, 0, -.24, 0, .04, .48, .04);
+      this.part('ball', 'dark', tail, 0, -.5, 0, .085, .12, .085);
+      this.caption(cow, 'Muh!');
+    }
   }
 
   buildSky() {
@@ -448,10 +566,13 @@ export class Landscape {
         animal.accessory.rotation.z = event.age * 3;
         animal.accessory.rotation.y = event.age * 1.5;
         animal.body.rotation.z = Math.sin(event.age * 3) * .08 * envelope;
-      } else {
+      } else if (animal.kind === 'duck') {
         animal.accessory.rotation.z = Math.sin(event.age * 4) * .25 * envelope;
         animal.accessory.position.y = .3 + Math.abs(Math.sin(event.age * 2)) * .22 * envelope;
         animal.body.rotation.y = Math.sin(event.age * 2) * .3 * envelope;
+      } else {
+        animal.body.rotation.y = Math.sin(event.age * 2) * .3 * envelope;
+        animal.body.position.y = Math.abs(Math.sin(event.age * 3)) * .08 * envelope;
       }
       if (event.age >= event.duration) this.finishEvent();
     }

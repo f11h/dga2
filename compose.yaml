@@ -1,0 +1,24 @@
+services:
+  game:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      GAME_ASSET_ROOT: /app/public
+      GAME_ALLOWED_ORIGINS: ${GAME_ALLOWED_ORIGINS:-}
+      GAME_MAX_ROOMS: ${GAME_MAX_ROOMS:-500}
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1.0
+    read_only: true
+    tmpfs:
+      - /app/runtime:size=32m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

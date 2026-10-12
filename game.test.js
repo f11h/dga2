@@ -50,6 +50,70 @@ test('Player slots default to humans and accept any human/computer combination',
   assert.throws(() => new Game({ controllers: ['invalid'] }), /Spielersteuerung/);
 });
 
+test('Unoccupied seats keep their colors but do not participate or start a turn', () => {
+  const game = new Game({ controllers: ['empty', 'human', 'empty', 'computer'], mode: 'classic' });
+  assert.equal(game.current, 1);
+  assert.deepEqual(game.participants().map(player => player.id), [1, 3]);
+  assert.equal(game.players[0].absent, true);
+  assert.equal(game.players[0].eliminated, false);
+  assert.deepEqual(game.players.map(player => player.color), new Game().players.map(player => player.color));
+  assert.match(game.log[0], /Gold/);
+  for (const current of [3, 1, 3, 1]) {
+    game.endTurn();
+    assert.equal(game.current, current);
+  }
+  assert.equal(game.round, 3);
+});
+
+test('At least two occupied seats are required', () => {
+  assert.throws(() => new Game({ controllers: ['human', 'empty', 'empty', 'empty'] }), /Mindestens zwei/);
+  assert.throws(() => new Game({ controllers: Array(4).fill('empty') }), /Mindestens zwei/);
+});
+
+test('Unoccupied seats never appear as event targets, captures or winners', () => {
+  const game = new Game({ controllers: ['human', 'empty', 'computer', 'empty'], mode: 'classic' });
+  game.players[0].pieces[0] = 8;
+  // Even corrupt leftover empty-seat pieces cannot block or take part in the game.
+  game.players[1].pieces = [0, 41, 42, 43];
+  assert.ok(game.boardPieces().every(piece => piece.player !== 1 && piece.player !== 3));
+  fixedRoll(game, [2]);
+  game.move(0);
+  assert.equal(game.players[1].pieces[0], 0);
+  assert.equal(game.current, 2);
+  game.checkWinner();
+  assert.equal(game.winner, null);
+  trigger(game, 'lose', { actor: 2 });
+  assert.equal(game.winner, 0);
+});
+
+test('Global dice bonuses expire after two turns per occupied seat, not four colors', () => {
+  const game = new Game({ controllers: ['empty', 'human', 'empty', 'computer'] });
+  trigger(game, 'ten', { actor: 1 });
+  assert.deepEqual(game.diceEffect.remaining, [0, 2, 0, 2]);
+  for (let i = 0; i < 3; i++) {
+    game.endTurn();
+    assert.equal(game.sides(), 10);
+  }
+  game.endTurn();
+  assert.equal(game.sides(), 6);
+});
+
+test('Trains and round counters continue with two or three occupied seats', () => {
+  for (const controllers of [
+    ['human', 'empty', 'computer', 'empty'],
+    ['empty', 'human', 'computer', 'human']
+  ]) {
+    const game = new Game({ controllers, random: () => 0 });
+    game.nextTrainRound = 2;
+    for (let i = 0; i < game.participants().length; i++) game.endTurn();
+    assert.equal(game.round, 2);
+    assert.equal(game.current, game.participants()[0].id);
+    assert.equal(game.pendingTrain, true);
+    game.resolveTrain();
+    assert.equal(game.pendingTrain, false);
+  }
+});
+
 test('Computer chooses mandatory deployment without changing game state or drawing randomness', () => {
   const game = new Game({ controllers: ['computer'], mode: 'classic' });
   fixedRoll(game, [6]);
@@ -126,9 +190,12 @@ test('No deployment on ordinary numbers; three attempts before changing player',
   assert.equal(game.current, 0);
   fixedRoll(game, [3]);
   assert.equal(game.attempts, 2);
-  fixedRoll(game, [1]);
+  const finalAttempt = fixedRoll(game, [1]);
   assert.equal(game.current, 1);
   assert.equal(game.attempts, 0);
+  assert.equal(game.rollData, null);
+  assert.deepEqual(finalAttempt.values, [1], 'Result is retained for dice display and player statistics after a turn change');
+  assert.equal(finalAttempt.total, 1);
 });
 
 test('Home pieces must enter before deployed pieces move on a six', () => {
@@ -726,6 +793,34 @@ test('Computer strategies finish full games under the same rules in both modes',
         assertBoard(game);
       }
       assert.equal(game.phase, 'over', `${mode}, seed ${seed} stalled after ${steps} steps`);
+    }
+  }
+});
+
+test('Games with two or three occupied seats finish without selecting absent players', () => {
+  for (const mode of ['classic', 'events']) {
+    for (let emptyMask = 1; emptyMask < 15; emptyMask++) {
+      const controllers = Array.from({ length: 4 }, (_, id) => emptyMask & (1 << id) ? 'empty' : 'computer');
+      if (controllers.filter(controller => controller !== 'empty').length < 2) continue;
+      let state = emptyMask;
+      const game = new Game({ mode, controllers, random: () => {
+        state = (Math.imul(1664525, state) + 1013904223) >>> 0;
+        return state / 4294967296;
+      } });
+      let steps = 0;
+      while (game.phase !== 'over' && steps++ < 30000) {
+        assert.equal(game.players[game.current].absent, false);
+        if (game.pendingTrain) game.resolveTrain();
+        else if (game.phase === 'roll') game.roll();
+        else if (game.phase === 'events') game.resolveEvent();
+        else if (game.phase === 'move') {
+          const option = game.chooseComputerOption();
+          game.move(option.piece, option.path);
+        } else assert.fail('Unsettled phase: ' + game.phase);
+        assertBoard(game);
+      }
+      assert.equal(game.phase, 'over', `${mode}, absent mask ${emptyMask}`);
+      assert.equal(game.players[game.winner].absent, false);
     }
   }
 });

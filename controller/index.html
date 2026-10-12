@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111722">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Mein Spiel · Bitte ärgern</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="controller.css">
+</head>
+<body>
+  <header><a href="../">bitte ärgern<span>.</span></a><span id="room-label">Handy-Steuerung</span></header>
+  <main>
+    <p id="connection" class="notice" role="status" aria-live="polite">Raumcode eingeben oder QR-Code am Spieltisch scannen.</p>
+    <p id="error" class="error" role="alert" hidden></p>
+    <form id="join-form" class="panel">
+      <h1>Dein Platz am Tisch.</h1>
+      <label>Raumcode<input id="code" name="code" maxlength="10" required autocomplete="off" autocapitalize="characters" pattern="[A-Za-z0-9]{4,10}"></label>
+      <label>Dein Name<input id="name" name="name" maxlength="18" required autocomplete="nickname" placeholder="Wie heißt du?"></label>
+      <button type="submit">Beitreten</button>
+    </form>
+    <section id="lobby" class="panel" hidden>
+      <h1>Die Runde sammelt sich.</h1>
+      <p id="manager-note"></p>
+      <div id="seats"></div>
+      <div id="manager-controls" hidden>
+        <label>Spielmodus<select id="mode"><option value="events">Mit Ereignissen</option><option value="classic">Klassisch</option></select></label>
+        <button id="configure">Einstellungen speichern</button>
+        <p id="configure-status" role="status" aria-live="polite"></p>
+        <button id="start">Partie starten</button>
+        <p id="start-hint"></p>
+      </div>
+    </section>
+    <section id="dashboard" hidden>
+      <div class="panel identity"><span id="my-color"></span><div><small>DEIN SPIEL</small><h1 id="my-name"></h1></div><strong id="round"></strong></div>
+      <div class="stats panel" id="stats"></div>
+      <section class="panel">
+        <h2 id="turn"></h2><p id="hint" aria-live="polite"></p>
+        <div id="dice" class="dice"></div>
+        <p id="effects"></p>
+        <button id="roll">⚄ Würfeln</button>
+        <div id="moves"></div>
+        <section id="event" hidden><h2 id="event-title"></h2><p id="event-description"></p><p id="event-result"></p><div id="event-targets"></div><button id="event-action">Ereignis bestätigen</button></section>
+      </section>
+      <section class="panel"><h2>Deine Figuren</h2><div id="pieces"></div></section>
+      <section class="panel"><h2>Am Spieltisch</h2><ol id="activity"></ol></section>
+    </section>
+    <section class="panel settings">
+      <label class="toggle"><input id="shake" type="checkbox"> Optional: Handy schütteln zum Würfeln</label>
+      <p id="motion-status" role="status">Der normale Würfelbutton funktioniert immer ohne Sensorberechtigung.</p>
+      <details><summary>Als App installieren</summary><p>Android: Browsermenü → „App installieren“ / „Zum Startbildschirm“. iPhone: Safari → Teilen → „Zum Home-Bildschirm“. HTTPS ist erforderlich. Ohne Verbindung wird kein Spiel simuliert.</p></details>
+      <button id="rejoin" class="secondary">Andere Lobby / neu beitreten</button>
+    </section>
+  </main>
+  <script type="module" src="controller.js"></script>
+</body>
+</html>

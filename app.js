@@ -2,6 +2,8 @@ import { Game, COLORS, COLOR_NAMES, EVENTS, eventProbability } from './game.js';
 import { BoardScene } from './scene.js';
 import { snapshot } from './animation.js';
 import { SoundEffects } from './sound.js';
+import qrcode from './node_modules/qrcode-generator/dist/qrcode.mjs';
+import { RoomConnection, readSession, clearSession, joinURL, restoreEngine, wirePhase } from './network.js';
 
 const $ = id => document.getElementById(id);
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -25,9 +27,213 @@ let scene = null;
 let graphicsFailed = false;
 let selectedPiece = null;
 const sounds = new SoundEffects();
+const diceHome = $('dice-stage').parentElement;
+const diceAnchor = $('dice-stage').nextElementSibling;
 let announcedTurn = null;
 const fullscreenButton = $('fullscreen-toggle');
 let fullscreenBusy = false;
+let online = false;
+let room = null;
+let network = null;
+let eventActor = null;
+let statistics = emptyStatistics();
+let published = '';
+function emptyStatistics() {
+  return COLORS.map(() => ({ rolls: 0, eyes: 0, moves: 0, captures: 0, turns: 0, sentHome: 0 }));
+}
+function onlineAvailable() {
+  return !online || (network?.ready && room?.hostConnected && room.seats.every(seat => seat.kind !== 'human' || seat.connected));
+}
+function publishState() {
+  if (!online || !started || !network?.ready) return;
+  const engine = JSON.parse(JSON.stringify(game));
+  const state = { ...engine, phase: wirePhase(game.phase, $('event-dialog').open),
+    engine, sides: game.sides(), legalMoves: game.legalMoves(), lastRoll, statistics,
+    eventActor, eventOpen: $('event-dialog').open, eventStage, eventResolved, wheelCandidates,
+    eventTitle: $('event-title').textContent, eventDescription: $('event-description').textContent,
+    eventResult: $('event-result').textContent, eventButton: $('event-confirm').textContent,
+    eventSymbol: $('event-symbol').textContent, eventSource: $('event-source').textContent };
+  const message = { type: 'state', state, busy: busy || graphicsFailed || !onlineAvailable() };
+  const serialized = JSON.stringify(message);
+  if (serialized !== published && network.send(message)) published = serialized;
+}
+function recordTransition(before, actor, { capture = false } = {}) {
+  if (before.current !== game.current || (before.phase !== 'over' && game.phase === 'over')) statistics[actor].turns++;
+  before.players.forEach(player => player.pieces.forEach((progress, piece) => {
+    if (progress >= 0 && game.players[player.id].pieces[piece] === -1) {
+      statistics[player.id].sentHome++;
+      if (capture && player.id !== actor) statistics[actor].captures++;
+    }
+  }));
+}
+function eventShow() { if (online) $('event-dialog').show(); else $('event-dialog').showModal(); }
+function updateConnectionBanner() {
+  const disconnected = online && (!network?.ready || (started && !onlineAvailable()));
+  $('connection-banner').hidden = !disconnected;
+  $('connection-banner').textContent = network?.terminalMessage || (!network?.ready ? 'Verbindung zum Server unterbrochen. Partie pausiert; erneute Verbindung läuft.'
+    : !room?.hostConnected ? 'Spieltisch nicht verbunden. Partie pausiert.' : 'Ein Handy ist getrennt. Partie pausiert, bis alle wieder verbunden sind.');
+}
+function restoreOnlineState(state) {
+  game = restoreEngine(Game, state);
+  lastRoll = state.lastRoll;
+  statistics = state.statistics || emptyStatistics();
+  eventActor = state.eventActor;
+  eventStage = state.eventStage || 'select';
+  eventResolved = !!state.eventResolved;
+  wheelCandidates = state.wheelCandidates || [];
+  eventComputer = game.players[eventActor ?? game.current].controller === 'computer';
+  busy = false;
+  started = true;
+  winnerShown = false;
+  scene?.newGame();
+  if (state.eventOpen) {
+    for (const [id, value] of Object.entries({ 'event-title': state.eventTitle, 'event-description': state.eventDescription,
+      'event-result': state.eventResult, 'event-confirm': state.eventButton, 'event-symbol': state.eventSymbol, 'event-source': state.eventSource })) {
+      $(id).textContent = value || '';
+    }
+    $('wheel-container').hidden = false;
+    if (eventStage === 'select' || !wheelCandidates.length) setupEventWheel(); else setupWheel(wheelCandidates);
+    $('event-confirm').disabled = true;
+    eventShow();
+  }
+}
+function receiveRoom(next) {
+  room = next;
+  $('room-code').textContent = room.code;
+  $('room-seats').replaceChildren(...room.seats.map(seat => html('li', '', `${COLOR_NAMES[seat.id]}: ${seat.name} · ${seat.kind === 'human' ? seat.connected ? 'verbunden' : 'getrennt' : seat.kind === 'computer' ? 'KI' : 'unbenutzt'}`)));
+  document.body.classList.toggle('online-playing', room.status === 'playing' || (room.status === 'finished' && room.state?.eventOpen));
+  $('room-lobby').hidden = room.status !== 'lobby';
+  $('create-room').hidden = room.status !== 'finished' || room.state?.eventOpen;
+  $('create-room').textContent = room.status === 'finished' ? 'Neue Internet-Lobby erstellen' : 'Internet-Lobby erstellen';
+  $('network-status').textContent = room.status === 'lobby' ? 'Lobby bereit. Das erste Handy verwaltet die Partie.' : `Raum ${room.code} · Eingaben ausschließlich auf den Handys`;
+  $('network-status').hidden = false;
+  updateConnectionBanner();
+  if (room.status !== 'lobby' && !started) {
+    if (room.state) {
+      try { restoreOnlineState(room.state); }
+      catch (error) {
+        $('network-error').hidden = false;
+        $('network-error').textContent = `Wiederaufnahme nicht möglich: ${error.message} Bitte eine neue Lobby erstellen.`;
+        network.close();
+        $('create-room').hidden = false;
+        document.body.classList.remove('online-playing');
+        updateConnectionBanner();
+        return;
+      }
+    }
+    else {
+      game = new Game({ names: room.seats.map(s => s.name), controllers: room.seats.map(s => s.kind), mode: room.mode });
+      started = true;
+      statistics = emptyStatistics();
+      lastRoll = null;
+      scene?.newGame();
+      sounds.play('start');
+    }
+    render();
+    showPending();
+  } else if (started && !busy) {
+    publishState();
+    showPending();
+  }
+}
+function startConnection(request) {
+  cancelComputerAction();
+  network?.close();
+  online = true;
+  started = false;
+  busy = false;
+  room = null;
+  published = '';
+  winnerShown = false;
+  eventActor = null;
+  eventResolved = false;
+  eventStage = 'select';
+  wheelCandidates = [];
+  announcedTurn = null;
+  selectedPiece = null;
+  lastRoll = null;
+  document.body.classList.add('online-host');
+  document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
+  network = new RoomConnection('host');
+  network.addEventListener('connection', ({ detail }) => {
+    $('network-status').hidden = false;
+    $('network-status').textContent = detail.message;
+    updateConnectionBanner();
+    if (!detail.ready) cancelComputerAction();
+  });
+  network.addEventListener('error', ({ detail }) => {
+    $('network-error').hidden = false;
+    $('network-error').textContent = `${detail.message} (${detail.code || 'Fehler'})`;
+    if (network.terminalMessage) {
+      document.body.classList.remove('online-playing');
+      $('create-room').hidden = false;
+      $('create-room').disabled = busy || graphicsFailed;
+    }
+  });
+  network.addEventListener('welcome', ({ detail }) => {
+    $('network-error').hidden = true;
+    published = '';
+    const url = joinURL(detail.code);
+    $('room-link').href = url;
+    $('room-link').textContent = url;
+    const localOrigin = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+    $('room-origin-warning').hidden = !localOrigin;
+    $('room-origin-warning').textContent = 'Dieser Link verwendet localhost und ist auf anderen Handys nicht erreichbar. Öffne den Spieltisch über seine LAN-Adresse oder öffentliche HTTPS-Adresse und erstelle dort die Lobby.';
+    const qr = qrcode(0, 'M');
+    qr.addData(url); qr.make();
+    $('room-qr').innerHTML = qr.createSvgTag({ scalable: true, margin: 4 });
+    receiveRoom(detail.room);
+  });
+  network.addEventListener('room', ({ detail }) => receiveRoom(detail.room));
+  network.addEventListener('action', async ({ detail }) => {
+    if (!onlineAvailable() || busy || graphicsFailed || !started || detail.revision !== room.revision) {
+      published = ''; publishState(); return;
+    }
+    const actor = $('event-dialog').open ? eventActor : game.current;
+    if (actor !== detail.seat || game.players[actor].controller !== 'human') { published = ''; publishState(); return; }
+    try {
+      if (detail.action === 'event' && $('event-dialog').open) await confirmEvent(false, true);
+      else if (detail.action === 'roll' && game.phase === 'roll') await rollDice(false, true);
+      else if (detail.action === 'move' && game.phase === 'move') {
+        const option = game.legalMoves().find(move => move.piece === detail.piece && move.destination === detail.destination &&
+          (!detail.path || (move.path?.length === detail.path.length && move.path.every((step, i) => step === detail.path[i]))));
+        if (option) await movePiece(option.piece, false, option.path ?? null, true);
+      }
+    } catch (error) {
+      $('network-error').hidden = false;
+      $('network-error').textContent = `Spielaktion fehlgeschlagen: ${error.message}`;
+    } finally { published = ''; publishState(); }
+  });
+  network.connect(request);
+}
+$('create-room').addEventListener('click', () => {
+  if (graphicsFailed || busy) return;
+  clearSession('host');
+  startConnection({ type: 'create' });
+});
+$('local-mode').addEventListener('click', () => {
+  if (busy) return;
+  network?.close();
+  clearSession('host');
+  online = false; room = null; started = false; busy = false;
+  game = new Game();
+  lastRoll = null;
+  statistics = emptyStatistics();
+  winnerShown = false;
+  document.body.classList.remove('online-host', 'online-playing');
+  document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
+  $('create-room').hidden = false;
+  $('room-lobby').hidden = true;
+  $('network-status').hidden = true;
+  $('network-error').hidden = true;
+  $('connection-banner').hidden = true;
+  render();
+  openSetup();
+});
+$('copy-room').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText($('room-link').href); $('copy-room').textContent = 'Link kopiert'; }
+  catch { $('copy-room').textContent = 'Bitte den angezeigten Link manuell kopieren'; }
+});
 function updateFullscreen() {
   const active = document.fullscreenElement === document.documentElement;
   fullscreenButton.textContent = active ? 'Vollbild verlassen' : 'Vollbild';
@@ -93,6 +299,8 @@ $('board').addEventListener('webglcontextlost', () => {
   graphicsFailed = true;
   cancelComputerAction();
   $('board').hidden = true;
+  $('webgl-error').hidden = false;
+  $('webgl-error').textContent = 'Die 3D-Grafikverbindung wurde unterbrochen. Bitte die Seite neu laden. Eine Internetpartie wird aus ihrem letzten Server-Spielstand wiederaufgenommen.';
   $('scene-caption').hidden = true;
   $('camera-reset').disabled = true;
   $('setup-form').querySelector('[type="submit"]').disabled = true;
@@ -120,7 +328,7 @@ function cancelComputerAction() {
 
 function scheduleComputerAction() {
   cancelComputerAction();
-  if (!started || busy || graphicsFailed) return;
+  if (!started || busy || graphicsFailed || !onlineAvailable()) return;
   let action;
   let delay = 650;
   // Event ownership stays with its actor, even after elimination or a turn change.
@@ -140,7 +348,7 @@ function scheduleComputerAction() {
   const scheduledGame = game;
   computerTimer = setTimeout(() => {
     computerTimer = null;
-    if (game !== scheduledGame || busy) return;
+    if (game !== scheduledGame || busy || !onlineAvailable()) return;
     action();
   }, reducedMotion.matches ? 80 : delay);
 }
@@ -153,8 +361,8 @@ function html(tag, className, text) {
 }
 
 function renderBoard() {
-  const movable = !busy && !isComputerTurn() ? game.legalMoves().map(move => move.piece) : [];
-  scene?.sync(snapshot(game), graphicsFailed ? [] : movable);
+  const movable = !busy && !isComputerTurn() && onlineAvailable() ? game.legalMoves().map(move => move.piece) : [];
+  scene?.sync(snapshot(game), graphicsFailed ? [] : movable, { numberedMoves: online, interactive: !online });
   if (!busy) scene?.idle();
 }
 
@@ -195,19 +403,22 @@ function renderPlayers() {
   $('players').replaceChildren();
   game.players.forEach(player => {
     const highlighted = game.phase === 'over' ? game.winner : game.current;
-    const card = html('div', `player-card${player.id === highlighted ? ' active' : ''}${player.eliminated ? ' eliminated' : ''}`);
+    const card = html('div', `player-card${player.id === highlighted ? ' active' : ''}${player.eliminated ? ' eliminated' : ''}${player.absent ? ' absent' : ''}`);
     card.style.setProperty('--card-color', player.color);
     const row = html('div', 'player-row');
     const goalsCount = player.pieces.filter(progress => progress >= 40).length;
     const miniature = html('span', 'mini-pieces');
-    for (let i = 0; i < player.pieces.length; i++) miniature.append(html('i', i < goalsCount ? 'finished' : ''));
-    miniature.setAttribute('aria-label', `${goalsCount} von ${player.pieces.length} Figuren im Ziel`);
-    const status = player.eliminated ? 'Ausgeschieden' : player.doubleTurns || player.pendingDouble ? `2 Würfel · ${Math.max(player.doubleTurns, player.pendingDouble)} Züge` : `${goalsCount}/${player.pieces.length} im Ziel`;
+    if (!player.absent) {
+      for (let i = 0; i < player.pieces.length; i++) miniature.append(html('i', i < goalsCount ? 'finished' : ''));
+      miniature.setAttribute('aria-label', `${goalsCount} von ${player.pieces.length} Figuren im Ziel`);
+    }
+    const status = player.absent ? 'Nicht dabei' : player.eliminated ? 'Ausgeschieden' : player.doubleTurns || player.pendingDouble ? `2 Würfel · ${Math.max(player.doubleTurns, player.pendingDouble)} Züge` : `${goalsCount}/${player.pieces.length} im Ziel`;
     row.append(html('span', 'player-dot'), html('span', 'player-name', player.name));
-    if (player.controller === 'computer') row.append(html('span', 'controller-badge', 'KI'));
-    row.append(html('span', 'player-status', status), miniature);
+    if (!player.absent && player.controller === 'computer') row.append(html('span', 'controller-badge', 'KI'));
+    row.append(html('span', 'player-status', status));
+    if (!player.absent) row.append(miniature);
     card.append(row);
-    if (game.mode === 'events') {
+    if (game.mode === 'events' && !player.absent) {
       const counter = html('div', 'counter-row');
       const meter = html('div', 'counter-track');
       meter.setAttribute('role', 'meter');
@@ -225,20 +436,33 @@ function renderPlayers() {
     }
     $('players').append(card);
   });
-  const computers = game.players.filter(player => player.controller === 'computer').length;
-  const humans = 4 - computers;
-  $('players-summary').textContent = computers === 0 ? '4 MENSCHEN · LOKAL'
-    : humans === 0 ? '4 KI · ZUSCHAUEN'
+  const computers = game.players.filter(player => !player.absent && player.controller === 'computer').length;
+  const humans = game.players.filter(player => !player.absent && player.controller === 'human').length;
+  $('players-summary').textContent = computers === 0 ? `${humans} MENSCHEN · LOKAL`
+    : humans === 0 ? `${computers} KI · ZUSCHAUEN`
     : `${humans} MENSCH${humans === 1 ? '' : 'EN'} · ${computers} KI`;
   $('counter-note').hidden = game.mode !== 'events';
 }
 
 function render() {
+  $('create-room').disabled = graphicsFailed || busy;
+  $('local-mode').disabled = busy;
   if (started && !busy && game.phase !== 'over' && announcedTurn !== game.current) {
     if (announcedTurn !== null) sounds.play('turn');
     announcedTurn = game.current;
   }
   const player = game.players[game.phase === 'over' ? game.winner : game.current];
+  const tvDice = online && started;
+  $('tv-display').hidden = !tvDice;
+  const diceParent = tvDice ? $('tv-dice-slot') : diceHome;
+  if ($('dice-stage').parentElement !== diceParent) {
+    if (tvDice) diceParent.append($('dice-stage'));
+    else diceParent.insertBefore($('dice-stage'), diceAnchor);
+  }
+  $('tv-turn').textContent = game.phase === 'over' ? `${player.name} gewinnt!` : `${player.name} ist dran`;
+  $('tv-roll').textContent = lastRoll ? `${lastRoll.values.join(' + ')}${lastRoll.values.length > 1 ? ' = ' + lastRoll.total : ' Augen'}` : 'Bereit zum Würfeln';
+  $('tv-status').textContent = busy ? 'Animation läuft …' : game.phase === 'events' ? 'Ereignis auf dem Handy bestätigen'
+    : isComputerTurn() ? 'KI spielt automatisch' : game.phase === 'move' ? 'Figur auf dem Handy auswählen' : 'Auf dem Handy würfeln';
   document.documentElement.style.setProperty('--player', player.color);
   $('current-orb').style.background = player.color;
   $('turn-label').textContent = game.phase === 'over' ? 'GEWONNEN' : isComputerTurn() ? 'KI AM ZUG' : 'AM ZUG';
@@ -260,6 +484,7 @@ function render() {
     : player.pieces.every(progress => progress === -1) ? 'Bring deine erste Figur ins Spiel.'
     : 'Dein Zug. Vielleicht gehört das Glück dir.';
   $('roll-button').disabled = graphicsFailed || !started || busy || game.pendingTrain || game.phase !== 'roll' || isComputerTurn();
+  if (online) $('roll-button').disabled = true;
   $('roll-button').replaceChildren(html('span', '', '⚄'), busy ? 'Würfelt …' : game.phase === 'over' ? 'Partie beendet' : isComputerTurn() ? 'KI spielt automatisch' : game.phase === 'move' ? 'Figur auswählen' : 'Würfeln');
   if (!isComputerTurn()) $('roll-button').append(html('kbd', '', 'Leertaste'));
   $('dice-info').textContent = game.phase === 'over' ? 'Der letzte Wurf' : `${player.doubleTurns > 0 ? 'Zwei Würfel' : 'Ein Würfel'} · ${game.sides()} Seiten`;
@@ -287,7 +512,7 @@ function render() {
   }
   const effects = [];
   if (game.diceEffect && game.phase !== 'over') {
-    const remaining = game.players.filter(other => !other.eliminated)
+    const remaining = game.players.filter(other => !other.absent && !other.eliminated)
       .map(other => `${other.name}: ${game.diceEffect.remaining[other.id]}`);
     effects.push(`D${game.diceEffect.sides} für alle · verbleibende Züge: ${remaining.join(' · ')}`);
   }
@@ -300,9 +525,11 @@ function render() {
   $('activity').replaceChildren(...game.log.slice(0, 12).map(text => html('li', '', text)));
   $('board-hint').textContent = game.phase !== 'over' && isComputerTurn() ? 'Die KI spielt automatisch.'
     : game.phase === 'move' ? 'Leuchtende Figur auswählen.' : 'Würfeln. Ziehen. Daumen drücken.';
+  publishState();
 }
 
-async function rollDice(automatic = false) {
+async function rollDice(automatic = false, remote = false) {
+  if ((online && !automatic && !remote) || !onlineAvailable()) return;
   if (graphicsFailed || !started || busy || game.pendingTrain || game.phase !== 'roll' || anyDialogOpen() || (isComputerTurn() && !automatic)) return;
   cancelComputerAction();
   busy = true;
@@ -320,7 +547,16 @@ async function rollDice(automatic = false) {
   }, 90);
   try {
     await sleep(reducedMotion.matches ? 50 : 1120);
-    if (!graphicsFailed) { lastRoll = game.roll(); sounds.play('result'); }
+    if (!graphicsFailed) {
+      const before = { ...snapshot(game), phase: game.phase };
+      const actor = game.current;
+      lastRoll = game.roll();
+      statistics[actor].rolls++;
+      statistics[actor].eyes += lastRoll.total;
+      recordTransition(before, actor);
+      publishState();
+      sounds.play('result');
+    }
   } finally {
     clearInterval(interval);
     busy = false;
@@ -329,7 +565,8 @@ async function rollDice(automatic = false) {
   showPending();
 }
 
-async function movePiece(piece, automatic = false, path = null) {
+async function movePiece(piece, automatic = false, path = null, remote = false) {
+  if ((online && !automatic && !remote) || !onlineAvailable()) return;
   if (graphicsFailed || busy || anyDialogOpen() || game.phase !== 'move' || (isComputerTurn() && !automatic)) return;
   cancelComputerAction();
   const options = game.legalMoves().filter(option => option.piece === piece);
@@ -340,12 +577,15 @@ async function movePiece(piece, automatic = false, path = null) {
     $('move-options').querySelector('button')?.focus();
     return;
   }
-  const before = snapshot(game);
+  const before = { ...snapshot(game), phase: game.phase };
   const player = game.current;
   busy = true;
   render();
   try {
     const option = game.move(piece, path);
+    statistics[player].moves++;
+    recordTransition(before, player, { capture: true });
+    publishState();
     await scene.move(before, snapshot(game), player, piece, option.path);
   } finally {
     busy = false;
@@ -360,7 +600,7 @@ function anyDialogOpen() {
 }
 
 function showPending() {
-  if (graphicsFailed || busy) return;
+  if (graphicsFailed || busy || !onlineAvailable()) return;
   if (anyDialogOpen()) {
     scheduleComputerAction();
     return;
@@ -380,7 +620,7 @@ function showPending() {
       ? `${winner.pieces.length} Figuren im Ziel. Starke Nerven, gute Würfel. Und vielleicht ein bisschen Schadenfreude.`
       : 'Als letzte Person im Spiel holst du dir den Sieg. Das Chaos hat gesprochen.';
     $('winner-dialog').classList.add('winner-confetti');
-    $('winner-dialog').showModal();
+    if (!online) $('winner-dialog').showModal();
   }
   scheduleComputerAction();
 }
@@ -388,10 +628,12 @@ function showPending() {
 async function runTrain() {
   cancelComputerAction();
   busy = true;
-  const before = snapshot(game);
+  const before = { ...snapshot(game), phase: game.phase };
   render();
   try {
     const result = game.resolveTrain();
+    recordTransition(before, game.current);
+    publishState();
     await scene.train(before, snapshot(game), result);
   } finally {
     busy = false;
@@ -465,6 +707,7 @@ function showEvent() {
   const event = game.queue[0];
   eventResolved = false;
   eventStage = 'select';
+  eventActor = event.actor;
   sounds.play('event');
   eventComputer = game.players[event.actor].controller === 'computer';
   $('event-source').textContent = `${game.players[event.actor].name} · ${event.source}`.toLocaleUpperCase('de');
@@ -477,10 +720,12 @@ function showEvent() {
   $('wheel-container').hidden = false;
   setupEventWheel();
   $('event-confirm').textContent = 'Ereignis-Glücksrad drehen';
-  $('event-dialog').showModal();
+  eventShow();
+  publishState();
 }
 
-async function confirmEvent(automatic = false) {
+async function confirmEvent(automatic = false, remote = false) {
+  if ((online && !automatic && !remote) || !onlineAvailable()) return;
   if (graphicsFailed || busy || !$('event-dialog').open || (eventComputer && !automatic)) return;
   cancelComputerAction();
   if (eventResolved) {
@@ -491,6 +736,7 @@ async function confirmEvent(automatic = false) {
   }
   busy = true;
   $('event-confirm').disabled = true;
+  publishState();
   if (eventStage === 'select') {
     const event = game.queue[0];
     let offset = 0;
@@ -510,11 +756,19 @@ async function confirmEvent(automatic = false) {
       $('event-confirm').textContent = wheelCandidates.length ? 'Raketen-Ziel auslosen' : 'Ereignis auslösen →';
     } finally { busy = false; }
     $('event-confirm').disabled = eventComputer;
+    publishState();
     scheduleComputerAction();
     return;
   }
-  const before = snapshot(game);
+  const before = { ...snapshot(game), phase: game.phase };
   const result = game.resolveEvent();
+  recordTransition(before, eventActor);
+  // Persist the applied engine before animation, so reload cannot apply an event twice.
+  eventResolved = true;
+  eventStage = 'result';
+  $('event-result').textContent = result.detail || 'Das Brett wurde aktualisiert. Weiter geht’s!';
+  $('event-confirm').textContent = 'Weiter am Spieltisch →';
+  publishState();
   if (result.target && wheelCandidates.length) {
     const index = wheelCandidates.findIndex(candidate => candidate.player === result.target.player && candidate.piece === result.target.piece);
     const angle = (index + .5) * 360 / wheelCandidates.length;
@@ -528,7 +782,7 @@ async function confirmEvent(automatic = false) {
     busy = false;
   }
   if (graphicsFailed) return;
-  $('event-dialog').showModal();
+  eventShow();
   $('event-result').textContent = result.detail || 'Das Brett wurde aktualisiert. Weiter geht’s!';
   if (result.target) $('event-symbol').textContent = '✹';
   busy = false;
@@ -540,7 +794,7 @@ async function confirmEvent(automatic = false) {
 }
 
 function openSetup() {
-  if (graphicsFailed || busy || game.phase === 'events') return;
+  if (online || graphicsFailed || busy || game.phase === 'events') return;
   cancelComputerAction();
   $('setup-cancel').hidden = !started;
   $('setup-dialog').showModal();
@@ -568,7 +822,9 @@ COLORS.forEach((color, index) => {
   human.value = 'human';
   const computer = html('option', '', 'KI');
   computer.value = 'computer';
-  select.append(human, computer);
+  const empty = html('option', '', 'Unbenutzt');
+  empty.value = 'empty';
+  select.append(human, computer, empty);
   controllerLabel.append(select);
   field.append(label, controllerLabel);
   $('name-fields').append(field);
@@ -583,15 +839,20 @@ EVENTS.forEach(event => {
 
 $('setup-form').addEventListener('submit', event => {
   event.preventDefault();
-  if (busy || graphicsFailed) return;
+  if (online || busy || graphicsFailed) return;
   cancelComputerAction();
   const data = new FormData(event.currentTarget);
+  if (COLORS.filter((_, index) => data.get(`controller-${index}`) !== 'empty').length < 2) {
+    $('setup-title').textContent = 'Mindestens zwei aktive Farben wählen';
+    return;
+  }
   game = new Game({
     names: COLORS.map((_, index) => data.get(`player-${index}`)),
     controllers: COLORS.map((_, index) => data.get(`controller-${index}`)),
     mode: data.get('mode')
   });
   started = true;
+  statistics = emptyStatistics();
   announcedTurn = null;
   selectedPiece = null;
   sounds.play('start');
@@ -631,4 +892,5 @@ document.addEventListener('keydown', event => {
   rollDice();
 });
 render();
-if (!graphicsFailed) $('setup-dialog').showModal();
+const hostSession = readSession('host');
+if (!graphicsFailed && hostSession) startConnection({ type: 'resume', code: hostSession.code, token: hostSession.token });

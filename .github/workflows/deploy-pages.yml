@@ -34,10 +34,13 @@ jobs:
       - name: Prepare static site
         shell: bash
         run: |
-          mkdir -p _site/node_modules/three/build
-          cp index.html style.css app.js game.js animation.js scene.js landscape.js sound.js _site/
+          mkdir -p _site/node_modules/three/build _site/node_modules/qrcode-generator/dist _site/controller
+          cp index.html style.css app.js game.js animation.js scene.js landscape.js sound.js network.js _site/
+          cp controller/index.html controller/controller.js controller/controller.css controller/manifest.webmanifest controller/sw.js controller/icon.svg _site/controller/
           cp node_modules/three/build/three.module.js node_modules/three/build/three.core.js _site/node_modules/three/build/
           cp node_modules/three/LICENSE _site/node_modules/three/LICENSE
+          cp node_modules/qrcode-generator/dist/qrcode.mjs _site/node_modules/qrcode-generator/dist/
+          cp backend/THIRD_PARTY_NOTICES.txt _site/THIRD_PARTY_NOTICES.txt
           touch _site/.nojekyll
 
       - name: Upload Pages artifact
