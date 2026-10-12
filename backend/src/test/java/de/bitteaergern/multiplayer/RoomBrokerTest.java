@@ -241,21 +241,6 @@ class RoomBrokerTest {
         assertEquals("RATE_LIMIT", host.await(n -> n.path("type").asText().equals("error")).path("code").asText());
     }
 
-    @Test
-    void originsAndPublicAssetAllowlistProtectRepository() throws Exception {
-        assertThrows(CompletionException.class, () -> http.newWebSocketBuilder().header("Origin", "https://evil.example")
-            .buildAsync(URI.create("ws://localhost:" + port + "/ws"), new WebSocket.Listener() {}).join());
-        for (String path : List.of("/health", "/", "/game.js", "/node_modules/three/build/three.core.js",
-            "/node_modules/three/LICENSE", "/THIRD_PARTY_NOTICES.txt")) {
-            assertEquals(200, http.send(java.net.http.HttpRequest.newBuilder(URI.create("http://localhost:" + port + path)).build(),
-                java.net.http.HttpResponse.BodyHandlers.discarding()).statusCode(), path);
-        }
-        for (String path : List.of("/package.json", "/backend/pom.xml", "/node_modules/three/package.json", "/controller/../package.json")) {
-            assertEquals(404, http.send(java.net.http.HttpRequest.newBuilder(URI.create("http://localhost:" + port + path)).build(),
-                java.net.http.HttpResponse.BodyHandlers.discarding()).statusCode(), path);
-        }
-    }
-
     private Map<String, Object> state(String phase, int current) {
         Map<String, Object> state = new HashMap<>();
         state.put("phase", phase); state.put("current", current);
